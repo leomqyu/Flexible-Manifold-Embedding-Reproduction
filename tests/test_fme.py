@@ -123,3 +123,23 @@ def test_split_and_preprocessing_no_test_leakage():
     np.testing.assert_allclose(B,pca.transform(X[b]))
     X[b] += 10000
     np.testing.assert_allclose(A,pca.transform(X[a]))
+
+
+def test_iterative_semi_matches_dense():
+    X,y=synthetic(n=42,d=7,seed=21)
+    for i in [2,3,4,5,24,25,26,27]:
+        y[i]=-1
+    exact=FlexibleManifoldEmbedding(mu=.6,gamma=.2,dense_threshold=100).fit(X,y)
+    cg_model=FlexibleManifoldEmbedding(mu=.6,gamma=.2,dense_threshold=10,tol=1e-11).fit(X,y)
+    np.testing.assert_allclose(cg_model.scores_,exact.scores_,atol=2e-7,rtol=1e-7)
+    np.testing.assert_allclose(cg_model.coef_,exact.coef_,atol=2e-7,rtol=1e-7)
+
+
+def test_iterative_unsup_matches_dense_eigenspace():
+    X,_=synthetic(n=42,d=7,seed=21)
+    m1=UnsupervisedFME(n_components=3,mu=.3,gamma=2.0,dense_threshold=100).fit(X)
+    m2=UnsupervisedFME(n_components=3,mu=.3,gamma=2.0,dense_threshold=10).fit(X)
+    np.testing.assert_allclose(m2.eigenvalues_,m1.eigenvalues_,atol=1e-7,rtol=1e-7)
+    # Eigenvectors are identifiable only up to sign/orthogonal rotation.
+    np.testing.assert_allclose(m2.embedding_@m2.embedding_.T,
+                              m1.embedding_@m1.embedding_.T,atol=1e-5,rtol=1e-5)

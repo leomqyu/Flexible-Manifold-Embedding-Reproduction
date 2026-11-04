@@ -105,3 +105,17 @@ Run outputs (`outputs/<run>/`) contain `runs.csv`, `summary.csv`, `summary.md`, 
 Implemented baselines: graph-only **LGC**, **GFHF**; hard-linear **LapRLS/L**; **PCA**, **LPP**, and **LPP-SR**. The original paper also compares **MFA**, **TCA**, and **SDA** in Table I; these are **not yet implemented** here. LPP and spectral-regression defaults have explicit regularization choices that may not match the authors' original baselines. No claims of reproduction of all methods or exact published accuracy are made.
 
 The CPU tests verify graph symmetry and PSD properties, closed-form FME first-order conditions, ridge elimination in both primal/dual regimes, centered FME/U eigenvectors, baseline finiteness, and split/preprocessing boundaries. Final manuscript-benchmark replication requires the precise original datasets, paper-specific graph bandwidth, parameter grids, and full repeated experiments.
+
+### Plotting and parallel split aggregation
+
+The result plotter uses measured `summary.csv` values and displays sample-standard-deviation error bars, when multiple splits exist:
+
+```bash
+python scripts/plot_results.py outputs/umist-unsup-paper/summary.csv --phase test --output outputs/umist-unsup-paper/accuracy_vs_dimension.png
+```
+
+Parallel workers should use non-overlapping `--split-start` ranges and distinct output folders. After all workers finish, combine their records (configuration and overlap are verified):
+
+```bash
+python scripts/merge_runs.py outputs/worker0 outputs/worker1 --output outputs/merged
+```
