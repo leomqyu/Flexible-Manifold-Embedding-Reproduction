@@ -48,7 +48,8 @@ def load_record_config(args, X, y):
     return dict(dataset=args.dataset, mode=args.mode, per_class=list(args.per_class),
                 dims=list(args.dims), mu=list(args.mu), gamma=list(args.gamma),
                 selection=args.selection, n_neighbors=args.neighbors, bandwidth=args.bandwidth,
-                pca_variance=args.pca_variance, seed=args.seed, split_start=args.split_start,
+                pca_variance=args.pca_variance, pca_all=args.pca_all,
+                seed=args.seed, split_start=args.split_start,
                 splits=args.splits, threads=args.threads, dataset_sha256=data_hash,
                 n_samples=len(X), n_features=X.shape[1], n_classes=len(np.unique(y)),
                 source_sha256=read_hash(), python=platform.python_version(),
@@ -63,6 +64,7 @@ def atomic_json(file, value):
 
 
 def evaluate_projection(Z_train, Z_test, y_train, y_test, labeled_indices):
+    """1-NN recognition in an unsupervised embedding (PCA/LPP/FME-U)."""
     clf = KNeighborsClassifier(n_neighbors=1)
     clf.fit(Z_train[labeled_indices], y_train[labeled_indices])
     mask = np.ones(len(y_train), dtype=bool)
@@ -71,6 +73,32 @@ def evaluate_projection(Z_train, Z_test, y_train, y_test, labeled_indices):
     if np.any(mask):
         metrics["unlabeled"] = float(clf.score(Z_train[mask], y_train[mask]))
     metrics["test"] = float(clf.score(Z_test, y_test))
+    return metrics
+
+
+def evaluate_semi(model, X_train, X_test, y_train, y_test, labeled_indices,
+                  transductive=None):
+    """Paper protocol for semi-supervised FME and LapRLS/L.
+
+    Unlabeled training nodes are classified by the method's own output: the
+    optimized label scores F for FME (or the linear scores for LapRLS/L).
+    Unseen samples are classified by argmax of the learned linear predictor
+    h(X)=XW+1b. This follows the reference FME implementation and differs from
+    1-NN on the projected coordinates, which is only used for the unsupervised
+    embedding experiments.
+    """
+    mask = np.ones(len(y_train), dtype=bool)
+    mask[labeled_indices] = False
+    if transductive is None:
+        train_scores = model.transform(X_train)
+    else:
+        train_scores = transductive
+    train_pred = model.classes_[np.argmax(train_scores, axis=1)]
+    test_pred = model.classes_[np.argmax(model.transform(X_test), axis=1)]
+    metrics = {}
+    if np.any(mask):
+        metrics["unlabeled"] = float(np.mean(train_pred[mask] == y_train[mask]))
+    metrics["test"] = float(np.mean(test_pred == y_test))
     return metrics
 
 
@@ -103,7 +131,7 @@ def _rows(method, metrics, split, seed, regime, dim, mu=None, gamma=None,
 def one_semi(X, y, args, split, regime):
     seed = args.seed + split
     train, test, labeled_full = semi_split(y, seed, regime)
-    Xt, Xv, pca = pca_preprocess(X[train], X[test], args.pca_variance)
+    Xt, Xv, pca = pca_preprocess(X[train], X[test], args.pca_variance, args.pca_all)
     yt, yv = y[train], y[test]
     # ``train`` is shuffled; map absolute labeled indices to train-row offsets.
     positions = np.flatnonzero(np.isin(train, labeled_full))
@@ -116,15 +144,14 @@ def one_semi(X, y, args, split, regime):
         for gamma in args.gamma:
             model = FlexibleManifoldEmbedding(mu=mu, gamma=gamma, n_neighbors=args.neighbors)
             model.fit(Xt, yu, laplacian=L)
-            metrics = evaluate_projection(model.transform(Xt), model.transform(Xv),
-                                          yt, yv, positions)
+            metrics = evaluate_semi(model, Xt, Xv, yt, yv, positions,
+                                    transductive=model.scores_)
             rows.extend(_rows("FME", metrics, split, seed, regime,
                               len(np.unique(y)), mu, gamma, candidate))
             candidate += 1
     for c, mu in enumerate(args.mu):
         baseline = LinearLapRLS(ridge=mu).fit(Xt, yu, L)
-        metrics = evaluate_projection(baseline.transform(Xt), baseline.transform(Xv),
-                                      yt, yv, positions)
+        metrics = evaluate_semi(baseline, Xt, Xv, yt, yv, positions)
         rows.extend(_rows("LapRLS/L", metrics, split, seed, regime,
                           len(np.unique(y)), mu, None, c))
     for method in ("lgc", "gfhf"):
@@ -138,7 +165,7 @@ def one_semi(X, y, args, split, regime):
 def one_unsup(X, y, args, split):
     seed = args.seed + split
     train, test = unsupervised_split(y, seed, per_class=5)
-    Xt, Xv, pca = pca_preprocess(X[train], X[test], args.pca_variance)
+    Xt, Xv, pca = pca_preprocess(X[train], X[test], args.pca_variance, args.pca_all)
     yt, yv = y[train], y[test]
     L, _, _ = knn_laplacian(Xt, args.neighbors, args.bandwidth)
     rows = []
@@ -210,6 +237,8 @@ def main(argv=None):
     parser.add_argument("--neighbors", type=int, default=5)
     parser.add_argument("--bandwidth", type=float, default=None)
     parser.add_argument("--pca-variance", type=float, default=0.95)
+    parser.add_argument("--pca-all", action="store_true",
+                        help="fit PCA on train+test (paper-style transductive preprocessing)")
     parser.add_argument("--selection", choices=("fixed", "paper_oracle"), default="fixed")
     parser.add_argument("--max-samples", type=int, default=0,
                         help="Development smoke test only; do not use for paper comparison")

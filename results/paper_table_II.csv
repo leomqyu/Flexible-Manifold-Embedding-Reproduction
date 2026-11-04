@@ -1,0 +1,13 @@
+dataset,method,paper_mean,paper_sd,paper_dim,paper_params
+UMIST,PCA,82.6,3.2,43,
+UMIST,LPP,80.4,3.5,31,
+UMIST,LPP-SR,81.5,3.2,35,lambda=1e-9
+UMIST,FME/U,86.3,2.8,35,"mu=1, gamma=1"
+YALE-B,PCA,43.1,1.2,60,
+YALE-B,LPP,53.3,3.1,60,
+YALE-B,LPP-SR,60.5,3.0,60,lambda=1e-3
+YALE-B,FME/U,68.2,2.5,60,"mu=1e-9, gamma=1e3"
+CMU PIE,PCA,53.4,1.5,55,
+CMU PIE,LPP,85.0,1.2,55,
+CMU PIE,LPP-SR,81.7,2.1,55,lambda=1e-5
+CMU PIE,FME/U,89.1,1.0,55,"mu=1e-9, gamma=1e3"

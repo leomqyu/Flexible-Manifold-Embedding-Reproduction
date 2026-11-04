@@ -70,19 +70,25 @@ def unsupervised_split(y, seed, per_class=5):
     return train, np.flatnonzero(mask)
 
 
-def pca_preprocess(X_train, X_test, variance=0.95):
-    """Fit PCA exclusively on the outer training set (no test leakage)."""
+def pca_preprocess(X_train, X_test, variance=0.95, fit_all=False):
+    """PCA preprocessing.
+
+    By default PCA is fit exclusively on the outer training set (no test
+    leakage). ``fit_all=True`` instead fits on the union of training and test
+    features, which matches the transductive preprocessing used in the
+    original paper's reported 55--60-dimensional FME/U experiments but leaks
+    test feature statistics. It is provided only as an explicitly labelled
+    paper-style comparison.
+    """
     n, d = X_train.shape
     if variance is None:
         return np.asarray(X_train, float), np.asarray(X_test, float), None
     if not 0 < variance <= 1:
         raise ValueError("variance must be in (0,1]")
-    max_dim = min(n, d)
-    if variance == 1:
-        components = max_dim
-    else:
-        components = variance
-    model = PCA(n_components=components, svd_solver="full")
-    train = model.fit_transform(X_train)
+    fit_data = np.vstack([X_train, X_test]) if fit_all else X_train
+    max_dim = min(len(fit_data), d)
+    components = max_dim if variance == 1 else variance
+    model = PCA(n_components=components, svd_solver="full").fit(fit_data)
+    train = model.transform(X_train)
     test = model.transform(X_test)
     return train, test, model

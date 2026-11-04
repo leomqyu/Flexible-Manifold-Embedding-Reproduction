@@ -5,11 +5,17 @@ embedding_dim). The published regularizer is mu*(||W||_F^2 +
 gamma*||F-XW-1b^T||_F^2); the names mu and gamma are not swapped.
 """
 
+import inspect
+
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve, eigh
-from scipy.sparse import issparse
-from scipy.sparse.linalg import LinearOperator, cg, eigsh
+from scipy.sparse import bmat, csr_matrix, diags, issparse
+from scipy.sparse.linalg import LinearOperator, cg, eigsh, splu
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
+
+# SciPy renamed the conjugate-gradient relative tolerance keyword from ``tol``
+# to ``rtol`` (SciPy >= 1.14). Select whichever this installation accepts.
+_CG_TOL_KEYWORD = "rtol" if "rtol" in inspect.signature(cg).parameters else "tol"
 
 from .graph import knn_laplacian
 
@@ -57,6 +63,30 @@ def _validated(X, mu, gamma):
     if not np.isfinite(mu) or not np.isfinite(gamma) or mu <= 0 or gamma <= 0:
         raise ValueError("mu and gamma must be positive and finite")
     return X
+
+
+def _solve_primal(ridge, L, u, Y, a):
+    """Exact FME solve in the feature space when d <= n.
+
+    Eliminating F gives a d-by-d system for W after solving
+    B Z = [UY, a*Xc] with B = U + L + a*H. The bordered sparse system below
+    applies B^{-1} without the cancellation-prone Sherman-Morrison formula.
+    """
+    n, d = ridge.n, ridge.d
+    S = (L + diags(u + a)).tocsr()
+    top = bmat([[S, csr_matrix(-(a / n) * np.ones((n, 1)))],
+                [csr_matrix(np.ones((1, n))), csr_matrix([[-1.0]])]],
+               format="csc")
+    lu = splu(top)
+    c = Y.shape[1]
+    R = np.column_stack([u[:, None] * Y, a * ridge.centered])
+    rhs = np.vstack([R, np.zeros((1, R.shape[1]))])
+    Z = lu.solve(rhs)[:n]
+    Z1, Z2 = Z[:, :c], Z[:, c:]
+    AZ = ridge.coef(Z)
+    M = np.eye(d) - AZ[:, c:]
+    W = np.linalg.solve(M, AZ[:, :c])
+    return Z1 + Z2 @ W
 
 
 def _graph(X, supplied, n_neighbors, bandwidth):
@@ -124,12 +154,30 @@ class FlexibleManifoldEmbedding(BaseEstimator, ClassifierMixin):
             matrix = np.column_stack([matvec(eye[:, i]) for i in range(n)])
             # Small-system direct solution also serves as an oracle for tests.
             F = np.linalg.solve((matrix + matrix.T) * 0.5, u[:, None] * Y)
+        elif ridge.primal:
+            F = _solve_primal(ridge, L, u, Y, a)
         else:
             operator = LinearOperator((n, n), matvec=lambda v:matvec(v), dtype=float)
             solutions = []
             for column in range(len(classes)):
-                v, info = cg(operator, u * Y[:, column], rtol=self.tol,
+                rhs = u * Y[:, column]
+                v, info = cg(operator, rhs,
+                             **{_CG_TOL_KEYWORD: self.tol},
                              atol=0.0, maxiter=self.max_iter)
+                if info != 0:
+                    # Extreme (mu, gamma) values make the true operator very
+                    # ill-conditioned. Retry with a Jacobi preconditioner built
+                    # from the exact diagonal; this changes only the numerical
+                    # solve, not the objective or its solution.
+                    diag = (u + np.asarray(L.diagonal()).ravel()
+                            + a * np.diag(ridge.apply(np.eye(n))))
+                    diag = np.maximum(np.asarray(diag).ravel(), 1e-12)
+                    preconditioner = LinearOperator(
+                        (n, n), matvec=lambda z: z / diag, dtype=float)
+                    v, info = cg(operator, rhs,
+                                 **{_CG_TOL_KEYWORD: self.tol},
+                                 atol=0.0, maxiter=self.max_iter,
+                                 M=preconditioner)
                 if info != 0:
                     raise RuntimeError(f"FME conjugate gradient did not converge (info={info})")
                 solutions.append(v)

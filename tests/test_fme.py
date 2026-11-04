@@ -143,3 +143,29 @@ def test_iterative_unsup_matches_dense_eigenspace():
     # Eigenvectors are identifiable only up to sign/orthogonal rotation.
     np.testing.assert_allclose(m2.embedding_@m2.embedding_.T,
                               m1.embedding_@m1.embedding_.T,atol=1e-5,rtol=1e-5)
+
+
+def test_primal_reduced_solver_matches_dense_extreme_penalty():
+    """The feature-space solver must match the dense oracle at large mu*gamma."""
+    rng = np.random.default_rng(7)
+    X = rng.standard_normal((55, 6))
+    y = np.full(55, -1)
+    y[[0, 1, 2, 3]] = [0, 1, 0, 1]
+    exact = FlexibleManifoldEmbedding(mu=1e6, gamma=1e6, dense_threshold=1000).fit(X, y)
+    reduced = FlexibleManifoldEmbedding(mu=1e6, gamma=1e6, dense_threshold=40).fit(X, y)
+    # At mu*gamma=1e12 the dense oracle itself is ill-conditioned; compare
+    # the identifiable quantities and the induced predictions.
+    np.testing.assert_array_equal(np.argmax(reduced.scores_, axis=1),
+                                  np.argmax(exact.scores_, axis=1))
+    np.testing.assert_allclose(reduced.coef_, exact.coef_, atol=1e-7, rtol=1e-7)
+
+
+def test_pca_all_uses_combined_features():
+    rng = np.random.default_rng(8)
+    X = rng.standard_normal((80, 12))
+    y = np.repeat([0, 1], 40)
+    a, b, _ = semi_split(y, 3, 2)
+    A, B, model = pca_preprocess(X[a], X[b], 0.95, fit_all=True)
+    np.testing.assert_allclose(A, model.transform(X[a]))
+    np.testing.assert_allclose(B, model.transform(X[b]))
+    assert model.n_features_in_ == X.shape[1]

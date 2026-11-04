@@ -1,0 +1,61 @@
+{
+  "sources": [
+    "/grp01/cs_yzyu/mqyu26/tmp/fme_repro/outputs/news_w0",
+    "/grp01/cs_yzyu/mqyu26/tmp/fme_repro/outputs/news_w1",
+    "/grp01/cs_yzyu/mqyu26/tmp/fme_repro/outputs/news_w2",
+    "/grp01/cs_yzyu/mqyu26/tmp/fme_repro/outputs/news_w3"
+  ],
+  "common_config": {
+    "dataset": "20news",
+    "mode": "semi",
+    "per_class": [
+      10,
+      20,
+      30
+    ],
+    "dims": [
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "mu": [
+      1e-06,
+      0.001,
+      1.0,
+      1000.0,
+      1000000.0
+    ],
+    "gamma": [
+      1e-06,
+      0.001,
+      1.0,
+      1000.0,
+      1000000.0
+    ],
+    "selection": "paper_oracle",
+    "n_neighbors": 5,
+    "bandwidth": "median",
+    "pca_variance": 0.95,
+    "seed": 20261104,
+    "threads": 1,
+    "dataset_sha256": "effc4b199687cea8b9f3b698a38c285d30898e7ca1f365f78d8b3bf9775404e5",
+    "n_samples": 3977,
+    "n_features": 8014,
+    "n_classes": 4,
+    "source_sha256": {
+      "run_experiments.py": "5543a2d661e94d83b45c0092e059e91e2c8ce6f5f3b213e174f2e8d359c90b07",
+      "requirements.txt": "8bc38e49a825610999c681795f470cfccbf478db2a1abf69e19783951180ca96",
+      "fme/__init__.py": "debe5298e12184baa9161e405fe1874e331ba17c4149f499a69228bf0e2cfa4f",
+      "fme/baselines.py": "90b118cd46d6db33bf1aca51e4cacf40d6a1492919da9552b3b7e89447638bca",
+      "fme/data.py": "0e3c7c14f81212513ae95d5a645854e85f261e2de9b420e571b0266939a58833",
+      "fme/graph.py": "07d4271088457f045a1396c895ea1e86413ff249dc9bb3d89b84ebfd09eac9ce",
+      "fme/model.py": "e57cbf7769d47093bae553ae7b4bd740ea5430483ef74b7df8d9037b9e7b55a8"
+    },
+    "python": "3.11.7",
+    "numpy": "1.26.4",
+    "scipy": "1.11.4",
+    "sklearn": "1.2.2"
+  }
+}
